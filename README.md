@@ -72,7 +72,6 @@ graph TD
 ├── 🐍 src/
 │   ├── extractors/                 # Data extraction modules
 │   │   ├── extractor_base.py       # Abstract base extractor
-│   │   └── aquis.py               # AQUIS venue extractor
 │   ├── models/                     # Core analysis models
 │   │   ├── arbitrage_signals.py   # Step 3: Signal generation
 │   │   ├── latency_simulator.py   # Step 4: Latency simulation
