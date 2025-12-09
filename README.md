@@ -76,9 +76,8 @@ graph TD
 │   ├── models/                     # Core analysis models
 │   │   ├── arbitrage_signals.py   # Step 3: Signal generation
 │   │   ├── latency_simulator.py   # Step 4: Latency simulation
+│   │   ├── consolidated_tape.py   # Step 2: Consolidated tape
 │   │   └── tape_integration.py    # Step 2: Consolidated tape
-│   ├── analysis/                   # Analysis utilities
-│   └── reports/                    # Report generation
 ├── 📚 examples/                    # Implementation examples
 │   ├── step2_consolidated_tape.py  # Standalone tape example
 │   ├── step3_arbitrage_signals_example.py
