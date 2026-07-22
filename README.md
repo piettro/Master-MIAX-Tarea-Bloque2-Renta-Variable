@@ -69,6 +69,7 @@ All timestamps are kept as **integer microsecond `epoch`**, so latency is added 
 
 ## 4. Results — full `DATA_BIG` (session 2025-11-07)
 
+<<<<<<< HEAD
 | Metric | Value |
 |--------|-------|
 | ISINs processed | **195** (155 with usable data, 72 with ≥ 1 opportunity) |
@@ -92,6 +93,28 @@ useful sanity check: it saw heavy news-driven activity that session, which widen
 
 > **Interpretation.** After member fees (~0.3 bps per side) and two-legged execution risk, this
 > raw edge is largely competed away — consistent with a heavily-exploited HFT space.
+=======
+```
+├── 📊 DATA_BIG/                    # Full market data (production)
+├── 📊 DATA_SMALL/                  # Sample data (testing)
+├── 🐍 src/
+│   ├── extractors/                 # Data extraction modules
+│   │   ├── extractor_base.py       # Abstract base extractor
+│   ├── models/                     # Core analysis models
+│   │   ├── arbitrage_signals.py   # Step 3: Signal generation
+│   │   ├── latency_simulator.py   # Step 4: Latency simulation
+│   │   ├── consolidated_tape.py   # Step 2: Consolidated tape
+│   │   └── tape_integration.py    # Step 2: Consolidated tape
+├── 📚 examples/                    # Implementation examples
+│   ├── step2_consolidated_tape.py  # Standalone tape example
+│   ├── step3_arbitrage_signals_example.py
+│   └── step4_latency_simulation_example.py
+├── 🧪 tests/                       # Comprehensive test suite
+├── 📓 notebooks/                   # Jupyter analysis notebooks
+├── 📋 Arbitrage_Analysis_Complete.ipynb  # Main deliverable
+└── 📖 README.md                    # This documentation
+```
+>>>>>>> 06aa53eb754579ebb3955428ccc5fa309a6728aa
 
 ---
 
