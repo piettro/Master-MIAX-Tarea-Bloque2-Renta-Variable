@@ -1,377 +1,180 @@
 # High-Frequency Arbitrage in Fragmented Markets
-## Lab Exercise: Spanish Equity Markets Analysis
+## Lab Exercise — Spanish Equity Markets (BME + MTFs)
 
-![Arbitrage Analysis](https://img.shields.io/badge/Status-Complete-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![Market Data](https://img.shields.io/badge/Market%20Data-Real%20Time-orange)
+![Pandas](https://img.shields.io/badge/pandas-2.x-150458)
+![Data](https://img.shields.io/badge/session-2025--11--07-orange)
+
+Detection of cross-venue arbitrage opportunities in Spanish equities trading simultaneously on
+**BME** and the MTFs **CBOE, Turquoise and Aquis**, and measurement of how quickly the profit
+decays with execution latency.
+
+Author: Piettro Rodrigues
 
 ---
 
-## 🎯 Executive Summary
+## 1. The problem
 
-This repository contains a comprehensive implementation of a **high-frequency arbitrage detection system** for fragmented European equity markets. The system analyzes cross-venue price discrepancies across Spanish equities trading on BME and various MTFs (CBOE, Turquoise, Aquis) to identify profitable arbitrage opportunities and measure the impact of execution latency on profitability.
+In modern European equity markets liquidity is **fragmented**: the same ISIN trades on several venues
+at once, so temporary price discrepancies appear. A High-Frequency Trader can, in principle, buy on the
+cheap venue and sell on the expensive one — but the edge is fleeting and disappears with latency.
 
-### Key Findings
-- **59,979 arbitrage opportunities** detected across 6 ISINs
-- **€90.59 total profit potential** with sophisticated latency modeling
-- **100% system robustness** score with production-ready implementation
-- **Expert-level market microstructure** validation and edge case handling
+As a Quantitative Researcher we answer three questions:
 
----
-
-## 📊 Project Context
-
-### The Fragmented Market Challenge
-In modern European equity markets, liquidity is fragmented across multiple venues:
-- **Primary Exchange**: BME (Bolsas y Mercados Españoles)
-- **MTFs**: CBOE, Turquoise, Aquis
-- **Challenge**: Same ISIN trades simultaneously with price discrepancies
-- **Opportunity**: Temporary arbitrage windows due to latency differences
-
-### The Mission
-As Quantitative Researchers, we address three critical questions:
-1. **Do arbitrage opportunities exist** in Spanish equities?
-2. **What is the maximum theoretical profit** (0 latency scenario)?
-3. **How does profit decay** with increasing execution latency (0μs → 100ms)?
+1. **Do** arbitrage opportunities still exist in Spanish equities?
+2. **What is the maximum theoretical profit** (0-latency scenario)?
+3. **How fast does the profit vanish** as the system gets slower (0 µs → 100 ms)?
 
 ---
 
-## 🏗️ System Architecture
+## 2. Deliverable
 
-### 4-Step Implementation Pipeline
+The authoritative, graded notebook is:
+
+> **[`notebooks/Arbitrage_Analysis_Corrected.ipynb`](notebooks/Arbitrage_Analysis_Corrected.ipynb)**
+
+It is self-contained: every pipeline function is defined inside it, it reads the real
+`DATA_BIG` files, and it produces the three required deliverables (Money Table, Decay Chart,
+Top-5 + sanity checks) plus instrument-list anomaly detection.
+
+> `notebooks/Arbitrage_Analysis_Complete.ipynb` is an earlier version, kept only as a backup.
+
+For the design rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the
+[`docs/PIPELINE_DIAGRAM.md`](docs/PIPELINE_DIAGRAM.md).
+
+---
+
+## 3. Method (4-step pipeline)
 
 ```mermaid
-graph TD
-    A[Step 1: Data Ingestion & Cleaning] --> B[Step 2: Consolidated Tape]
-    B --> C[Step 3: Signal Generation]
-    C --> D[Step 4: Latency Simulation]
-    
-    A1[QTE/STS Files] --> A
-    A2[Magic Number Filtering] --> A
-    A3[Market Status Validation] --> A
-    
-    B1[Cross-Venue Alignment] --> B
-    B2[Timestamp Synchronization] --> B
-    
-    C1[Arbitrage Detection] --> C
-    C2[Rising Edge Logic] --> C
-    C3[Profit Calculation] --> C
-    
-    D1[Time Machine Approach] --> D
-    D2[14 Latency Scenarios] --> D
-    D3[Execution Simulation] --> D
+flowchart LR
+    A["Step 1<br/>Ingestion & cleaning<br/>(magic-number filter)"]
+    B["Step 2<br/>Status filter + Consolidated Tape<br/>(merge_asof by mic, ffill)"]
+    C["Step 3<br/>Signal generation<br/>(MaxBid>MinAsk, rising edge)"]
+    D["Step 4<br/>Time Machine<br/>(latency revaluation)"]
+    A --> B --> C --> D --> E["Money Table · Decay Chart · Top 5"]
 ```
+
+| Step | What it does |
+|------|--------------|
+| **1. Ingestion & cleaning** | Load `QTE` + `STS` per ISIN across venues; drop vendor **magic numbers** (`px ≥ 100 000` / `px ≤ 0`). |
+| **2. Status + Consolidated Tape** | Keep only **Continuous-Trading** snapshots via `merge_asof` (by `epoch` **and** `mic`); pivot best bid/ask per venue and **forward-fill** latent prices; take the global MaxBid / MinAsk. |
+| **3. Signal generation** | `Global Max Bid > Global Min Ask`; profit `= (MaxBid − MinAsk) × min(BidQty, AskQty)`; **rising-edge** rule so each opportunity is counted once. |
+| **4. The Time Machine** | For each latency Δ, look up the *actual* profit at `T + Δ` (`merge_asof` on integer-µs epoch). Fill-or-kill: a vanished opportunity realises €0, never a loss. |
+
+All timestamps are kept as **integer microsecond `epoch`**, so latency is added in native µs
+(no datetime unit pitfalls).
 
 ---
 
-## 📁 Repository Structure
+## 4. Results — full `DATA_BIG` (session 2025-11-07)
 
-```
-├── 📊 DATA_BIG/                    # Full market data (production)
-├── 📊 DATA_SMALL/                  # Sample data (testing)
-├── 🐍 src/
-│   ├── extractors/                 # Data extraction modules
-│   │   ├── extractor_base.py       # Abstract base extractor
-│   │   └── aquis.py               # AQUIS venue extractor
-│   ├── models/                     # Core analysis models
-│   │   ├── arbitrage_signals.py   # Step 3: Signal generation
-│   │   ├── latency_simulator.py   # Step 4: Latency simulation
-│   │   └── tape_integration.py    # Step 2: Consolidated tape
-│   ├── analysis/                   # Analysis utilities
-│   └── reports/                    # Report generation
-├── 📚 examples/                    # Implementation examples
-│   ├── step2_consolidated_tape.py  # Standalone tape example
-│   ├── step3_arbitrage_signals_example.py
-│   └── step4_latency_simulation_example.py
-├── 🧪 tests/                       # Comprehensive test suite
-├── 📓 notebooks/                   # Jupyter analysis notebooks
-├── 📋 Arbitrage_Analysis_Complete.ipynb  # Main deliverable
-└── 📖 README.md                    # This documentation
-```
+| Metric | Value |
+|--------|-------|
+| ISINs processed | **195** (155 with usable data, 72 with ≥ 1 opportunity) |
+| Rising-edge opportunities | **3,102** |
+| Total realised profit @ 0 µs | **€3,611.39** |
+| Total realised profit @ 100 ms | **€1,372.99** |
+| Retention (100 ms / 0 µs) | **38.0 %** |
 
----
+**Top 5 by zero-latency profit** — all Spanish blue chips, 100 % cross-venue, 2.8–18 bps spreads:
 
-## 🛠️ Technical Implementation
+| # | ISIN | Instrument | Profit @ 0 µs | New opps |
+|---|------|-----------|---------------|----------|
+| 1 | ES0177542018 | IAG | €790.14 | 914 |
+| 2 | ES0105065009 | Logista | €413.28 | 5 |
+| 3 | ES0113211835 | BBVA | €389.15 | 66 |
+| 4 | ES0105066007 | Cellnex | €277.29 | 95 |
+| 5 | ES0144580Y14 | Iberdrola | €240.05 | 17 |
 
-### Data Specifications
+The profit **decays monotonically** with latency — the expected shape. IAG topping the list is a
+useful sanity check: it saw heavy news-driven activity that session, which widens cross-venue spreads.
 
-#### File Naming Convention
-```
-<type>_<session>_<isin>_<ticker>_<mic>_<part>.csv.gz
-```
-
-- **type**: QTE (Quotes), STS (Status), TRD (Trades)
-- **session**: Trading date (YYYY-MM-DD)
-- **isin**: Cross-venue identifier
-- **mic**: Market Identifier Code
-
-#### Critical Vendor Specifications
-
-##### Magic Numbers (Must Filter)
-| Value | Meaning | Action |
-|-------|---------|---------|
-| 666666.666 | Unquoted/Unknown | ❌ Discard |
-| 999999.999 | Market Order | ❌ Discard |
-| 999999.989 | At Open Order | ❌ Discard |
-| 999999.988 | At Close Order | ❌ Discard |
-| 999999.979 | Pegged Order | ❌ Discard |
-| 999999.123 | Unquoted/Unknown | ❌ Discard |
-
-##### Market Status Codes (Continuous Trading Only)
-| Venue | Valid Codes |
-|-------|-------------|
-| AQUIS | 5308427 |
-| BME | 5832713, 5832756 |
-| CBOE | 12255233 |
-| TURQUOISE | 7608181 |
+> **Interpretation.** After member fees (~0.3 bps per side) and two-legged execution risk, this
+> raw edge is largely competed away — consistent with a heavily-exploited HFT space.
 
 ---
 
-## 🚀 Quick Start
+## 5. Quick start
 
 ### Prerequisites
 ```bash
 python >= 3.10
-pandas >= 2.0
-numpy >= 1.24
-matplotlib >= 3.7
-seaborn >= 0.12
+pip install pandas numpy matplotlib jupyter
 ```
 
-### Installation
-```bash
-# Clone repository
-git clone <repository-url>
-cd arbitrage-analysis
+### Run
+Open the notebook and, in the **Configuration** cell, set the data location:
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install pandas numpy matplotlib seaborn jupyter
-```
-
-### Running the Analysis
-
-#### Option 1: Complete Jupyter Notebook
-```bash
-# Run the main analysis notebook
-jupyter notebook Arbitrage_Analysis_Complete.ipynb
-```
-
-#### Option 2: Standalone Examples
-```bash
-# Step 2: Consolidated Tape
-python examples/step2_consolidated_tape.py
-
-# Step 3: Arbitrage Detection
-python examples/step3_arbitrage_signals_example.py
-
-# Step 4: Latency Simulation
-python examples/step4_latency_simulation_example.py
-```
-
-#### Option 3: Module-by-Module
 ```python
-from src.models.arbitrage_signals import ArbitrageSignalGenerator
-from src.models.latency_simulator import LatencySimulator
-
-# Initialize components
-signal_gen = ArbitrageSignalGenerator()
-latency_sim = LatencySimulator()
-
-# Run analysis
-opportunities = signal_gen.detect_arbitrage_opportunities(data, isin)
-results = latency_sim.simulate_latency_impact(opportunities, data)
+BASE = r"...\Tareas\Renta Variable"   # folder containing DATA_BIG / DATA_SMALL
+USE_SMALL = False   # True -> quick test on DATA_SMALL ; False -> full DATA_BIG
+MAX_ISINS = None    # e.g. 20 to cap the run; None = all
 ```
 
----
-
-## 📈 Core Features
-
-### 1. Data Ingestion & Cleaning (`src/extractors/`)
-- **Multi-venue data loading** with format validation
-- **Magic number filtering** for data quality
-- **Market status validation** for tradeable periods
-- **Timestamp normalization** across venues
-
-### 2. Consolidated Tape (`src/models/tape_integration.py`)
-- **Cross-venue price alignment** with microsecond precision
-- **Forward-fill interpolation** for latency handling
-- **Configurable resampling** (1ms to 1s resolution)
-- **Memory-efficient processing** for large datasets
-
-### 3. Arbitrage Signal Generation (`src/models/arbitrage_signals.py`)
-- **Real-time opportunity detection**: Global Max Bid > Global Min Ask
-- **Rising edge logic**: 1-second persistence rule prevents double-counting
-- **Profit calculation**: `(Max Bid - Min Ask) × Min(Bid Qty, Ask Qty)`
-- **Venue attribution**: Identifies optimal execution venues
-
-### 4. Latency Simulation (`src/models/latency_simulator.py`)
-- **Time Machine approach**: Signal at T, execution at T + Δ
-- **14 latency scenarios**: [0, 100, 500, 1000, 2000, 3000, 4000, 5000, 10000, 15000, 20000, 30000, 50000, 100000] μs
-- **Realistic execution modeling**: Market state lookup at execution time
-- **Profit degradation tracking**: Measures opportunity decay
-
----
-
-## 📊 Key Deliverables
-
-### 1. 💰 The Money Table
-Comprehensive profit matrix showing realized EUR profits across ISINs and latency scenarios.
-
-| ISIN | 0μs | 100μs | 1ms | 10ms | 100ms | Total |
-|------|-----|-------|-----|------|-------|-------|
-| ES0113900J37 | €1.71 | €3.22 | €1.65 | €6.87 | €6.87 | €67.01 |
-| ES0113211835 | €1.60 | €1.29 | €2.64 | €0.31 | €0.31 | €23.58 |
-| **TOTAL** | €3.30 | €4.50 | €4.29 | €7.18 | €7.18 | €90.59 |
-
-### 2. 📈 The Decay Chart
-Professional 4-panel visualization:
-- **Total Profit vs Latency**
-- **Profit Decay Rate**
-- **Individual ISIN Performance**
-- **Profit Retention Rate**
-
-### 3. 🏆 Top 5 Opportunities Analysis
-- **Ranking by zero-latency profit**
-- **Comprehensive sanity checks** (execution rates, venue diversity)
-- **Risk assessment** (latency sensitivity analysis)
-- **Trading recommendations**
-
----
-
-## 🔬 Advanced Features
-
-### Market Microstructure Validation
-- **Magic number contamination**: 0.00% (clean data)
-- **Bid-ask inversion detection**: 2-3% rate (typical for simulated data)
-- **Trading session coverage**: Full session analysis
-- **Price anomaly detection**: Extreme movement identification
-
-### Edge Case Analysis
-- **Volatility spike testing**: 50% price movements
-- **Data interruption simulation**: 5% random gaps
-- **Timing misalignment**: Cross-venue delays
-- **Market session edges**: Open/close effects
-- **High-frequency periods**: Microsecond updates
-
-### Production-Ready Architecture
-- **Object-oriented design** with inheritance patterns
-- **Comprehensive error handling** for edge cases
-- **Memory optimization** for large datasets
-- **Extensive test coverage** (>90%)
-- **Professional logging** and monitoring
-
----
-
-## 📊 Performance Metrics
-
-### System Robustness
-- **Overall Score**: 100/100 (Production Ready)
-- **Data Quality**: 26/100 (Simulated data characteristics)
-- **Edge Case Resilience**: All tests passed
-- **Execution Speed**: ~2,800 simulations in <2 seconds
-
-### Key Insights
-- **Latency Impact**: Demonstrates significant profit variation with execution delay
-- **Market Timing**: Some scenarios show better performance at higher latencies
-- **Risk Factors**: Identified latency-sensitive positions requiring controls
-- **Venue Diversity**: Cross-venue opportunities successfully detected
-
----
-
-## 🎓 Academic Excellence
-
-### Grading Target: 9-10 Points
-This implementation demonstrates:
-- ✅ **Expert technical depth** with microsecond precision
-- ✅ **Market microstructure awareness** with professional validation
-- ✅ **Comprehensive analysis** including sanity checks and risk assessment
-- ✅ **Production-grade architecture** with extensive testing
-- ✅ **Clear visualizations** and business recommendations
-
-### Lab Exercise Compliance
-- ✅ **Step 1-4 Implementation**: Complete pipeline with vendor specifications
-- ✅ **Magic Number Handling**: Strict filtering of invalid prices
-- ✅ **Market Status Validation**: Continuous trading periods only
-- ✅ **Latency Modeling**: Exact microsecond precision simulation
-- ✅ **Rising Edge Logic**: Proper duplicate prevention
-- ✅ **All Deliverables**: Money Table, Decay Chart, Top 5 Analysis
-
----
-
-## 🛡️ Risk Considerations
-
-### Market Risk
-- **Latency Sensitivity**: Some ISINs show 80%+ profit decay
-- **Venue Concentration**: Monitor venue diversity for execution
-- **Market Timing**: Optimal execution windows vary by latency
-
-### Operational Risk
-- **Data Quality**: Continuous validation of market feeds
-- **System Latency**: Real-time monitoring of execution delays
-- **Edge Cases**: Robust handling of market open/close periods
-
----
-
-## 📚 Documentation
-
-### Code Documentation
-- **Docstrings**: Comprehensive function documentation
-- **Type Hints**: Full type annotation for maintainability
-- **Comments**: Detailed inline explanations
-- **Examples**: Working code samples for all components
-
-### Research Documentation
-- **Methodology**: Detailed explanation of arbitrage detection
-- **Validation**: Sanity checks and edge case analysis
-- **Performance**: Benchmarking and optimization notes
-- **Future Work**: Extension recommendations
-
----
-
-## 🤝 Contributing
-
-### Development Setup
 ```bash
-# Install development dependencies
-pip install pytest black flake8 mypy
-
-# Run tests
-pytest tests/
-
-# Code formatting
-black src/ tests/
-
-# Type checking
-mypy src/
+jupyter notebook notebooks/Arbitrage_Analysis_Corrected.ipynb
 ```
 
-### Testing
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: End-to-end pipeline validation
-- **Performance Tests**: Large dataset benchmarking
-- **Edge Case Tests**: Stress condition validation
+Start with `USE_SMALL = True` for a fast end-to-end smoke test, then switch to `False`
+for the full run.
 
 ---
 
-## 📞 Support
+## 6. Data specification
 
-### Contact Information
-- **Submission**: francisco.merlos@six-group.com
-- **Subject**: "Arbitrage study in BME | [Your Name]"
-- **Deadline**: December 9th, 2025, 23:59 CET
+**File naming:** `<type>_<session>_<isin>_<ticker>_<mic>_<part>.csv.gz` (files are `;`-separated).
 
-### Troubleshooting
-- **Data Issues**: Check magic number filtering and market status
-- **Performance**: Use DATA_SMALL for testing, DATA_BIG for production
-- **Memory**: Consider chunked processing for very large datasets
-- **Accuracy**: Validate timestamp alignment and latency calculations
+**Magic numbers (discarded):** `666666.666`, `999999.999`, `999999.989`, `999999.988`,
+`999999.979`, `999999.123` — handled with a single `px ≥ 100 000` threshold.
+
+**Continuous-Trading status codes:**
+
+| Venue | MIC | Code(s) |
+|-------|-----|---------|
+| BME | XMAD | 5832713, 5832756 |
+| AQUIS | AQEU | 5308427 |
+| CBOE | CEUX | 12255233 |
+| TURQUOISE | TQEX | 7608181 |
+
+**Latencies simulated (µs):** `0, 100, 500, 1000, 2000, 3000, 4000, 5000, 10000, 15000, 20000, 30000, 50000, 100000`.
 
 ---
 
-## 📜 License
+## 7. Repository structure
 
-This project is developed for academic purposes as part of the Master MIAX program. All market data specifications follow industry standards for educational use.
+```
+Renta Variable/
+├── notebooks/
+│   ├── Arbitrage_Analysis_Corrected.ipynb   # ← authoritative deliverable
+│   └── Arbitrage_Analysis_Complete.ipynb    # earlier version (backup)
+├── src/
+│   ├── extractors/extractor_base.py
+│   └── models/
+│       ├── consolidated_tape.py             # pivot + ffill + global best
+│       ├── arbitrage_signals.py             # signals + rising edge
+│       ├── latency_simulator.py             # time machine
+│       └── tape_integration.py              # status integration
+├── examples/                                # standalone per-step scripts
+├── tests/                                   # pytest suites
+├── documents/                               # assignment brief
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── PIPELINE_DIAGRAM.md
+└── README.md
+```
+
+---
+
+## 8. Assumptions & limitations
+
+- **Both legs execute together** (no partial-fill unwinding) — makes the P&L an optimistic upper bound.
+- **Fill-or-kill:** vanished opportunities realise €0, never a loss.
+- **Fees excluded:** member fees (~0.3 bps/side) and FX for non-EUR lines are not deducted.
+- **Top-of-book, Level-2 only:** deeper levels and a full order-by-order matching engine are out of scope.
+- **Book-emptying not modelled:** `ffill` keeps the last price latent (rare edge case noted in the lecture).
+
+---
+
+*Developed for the Master MIAX programme. Market-data specifications follow the vendor definitions
+provided with the exercise.*
